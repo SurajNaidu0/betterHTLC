@@ -28,7 +28,13 @@ use crate::dailyvault::signature_building::{get_sigmsg_components, TxCommitmentS
 pub(crate) struct HTLC {
     pub htlc_funded_utxo: Option<HtlcFunded>,
     pub redeem_address: Option<Address>,
-    pub redeem_config: Option<RedeemConfig>
+    pub redeem_config: Option<RedeemConfig>,
+    pub refund_config: Option<RefundConfig>
+}
+
+pub struct RefundConfig {
+    pub refund_address: Address,
+    pub refund_lock: i64,
 }
 
 pub struct RedeemConfig {
@@ -63,7 +69,7 @@ impl HTLC {
         let payment_hash = self.redeem_config.as_ref().unwrap().payment_hash.as_str();
         Ok(TaprootBuilder::new()
             .add_leaf(1, htlc_redeem_script(&self.redeem_address.as_ref().unwrap(),payment_hash))?
-            .add_leaf(1, htlc_refund_script())?
+            .add_leaf(1, htlc_refund_script(&self.refund_config.as_ref().unwrap().refund_address,&self.refund_config.as_ref().unwrap().refund_lock))?
             .finalize(&secp, nums_key)
             .expect("finalizing taproot spend info with a NUMS point should always work"))
     }
@@ -172,8 +178,6 @@ impl HTLC {
         grinded_txn.input.first_mut().unwrap().witness = htlc_txin.witness.clone();
         let raw_tx_hex = hex::encode(serialize(&grinded_txn));
         println!("Raw transaction hex: {}", raw_tx_hex);
-
-        println!("htlc_tx: {:?}", grinded_txn);
         Ok(grinded_txn)
     }
 
