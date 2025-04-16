@@ -38,6 +38,10 @@ fn main() {
     // let txn =htlc.create_redeem_tx().unwrap();
 
     let txn = htlc.create_refund_tx().unwrap();
+    let txn_weight = txn.weight().to_vbytes_ceil();
+    println!("txn weight: {:?}", txn_weight);
+
+    
 
 }
 

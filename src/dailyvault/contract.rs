@@ -326,3 +326,28 @@ impl HTLC {
     }
 }
 
+fn add_fee_to_txn(txn:&mut Transaction,fee_outpoint:OutPoint,fee_utxo_value:Amount,fee_sats:Amount,fee_refund_address:Address)->Result<&mut Transaction> {
+    // Placeholder for fee calculation and transaction adjustment
+    // This function should calculate the fee and adjust the transaction accordingly
+    let input = TxIn {
+        previous_output: fee_outpoint,
+        script_sig: ScriptBuf::new(),
+        sequence: Sequence::MAX,
+        witness: Witness::new(),
+    };
+
+    if fee_utxo_value <= fee_sats {
+        return Err(anyhow!("Fee UTXO value is less than or equal to fee"));
+    }
+
+    let output = TxOut {
+        script_pubkey: fee_refund_address.script_pubkey(),
+        value: fee_utxo_value-fee_sats,
+    };
+
+    txn.input.push(input);
+    txn.output.push(output);
+    Ok(txn)
+}
+
+
