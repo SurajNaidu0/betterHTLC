@@ -239,4 +239,6 @@ impl HTLC {
 
         Ok(witness)
     }
+
 }
+
