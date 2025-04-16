@@ -207,7 +207,7 @@ impl HTLC {
         htlc_witness_components.push(witness_components[5].clone());
 
 
-        // Push witness components
+        // Push witness components - switch 
         for component in htlc_witness_components.iter() {
             debug!(
                 "pushing component <0x{}> into the witness",
