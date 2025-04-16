@@ -35,7 +35,9 @@ fn main() {
 
     
 
-    let txn =htlc.create_redeem_tx().unwrap();
+    // let txn =htlc.create_redeem_tx().unwrap();
+
+    let txn = htlc.create_refund_tx().unwrap();
 
 }
 

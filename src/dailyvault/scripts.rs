@@ -89,18 +89,10 @@ pub(crate) fn htlc_redeem_script(redeem_address:&Address,payment_hash:&str) -> S
 
 pub(crate) fn htlc_refund_script(refund_address:&Address, lock_time: &i64) -> ScriptBuf {
     let mut builder = Script::builder();
-    // The witness program needs to have the signature components except the outputs, prevouts,
-    // followed by the previous transaction version, inputs, and locktime
-    // followed by vault SPK, the vault amount, and the target SPK
-    // followed by the fee-paying txout
-    // followed by the mangled signature
-    // and finally the a normal signature that signs with vault pubkey
     builder = builder
         .push_int(*lock_time)
-        .push_opcode(OP_CSV)
-        .push_opcode(OP_DROP)
-        .push_opcode(OP_CSV) // check relative timelock on withdrawal
-        .push_opcode(OP_DROP) // drop the result
+        .push_opcode(OP_CSV) 
+        .push_opcode(OP_DROP) 
         .push_opcode(OP_TOALTSTACK)
     .push_opcode(OP_TOALTSTACK)
     .push_opcode(OP_TOALTSTACK) 
