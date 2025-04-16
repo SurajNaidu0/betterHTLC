@@ -38,7 +38,7 @@ pub struct RefundConfig {
 
 pub struct RedeemConfig {
     pub payment_hash: String,
-    pub preimage: String,
+    pub preimage: Option<String>, // Changed to Option<String>
 }
 
 pub struct HtlcFunded {
@@ -134,7 +134,13 @@ impl HTLC {
             &[htlc_txout.clone()],
             leaf_hash,
         )?;
-        let mut grinded_txn = contract_components.transaction;
+        let signature_components = &contract_components.signature_components; // Borrow before move
+        let mut grinded_txn = contract_components.transaction; // Move after borrow
+
+        let preimage = redeem_config.preimage.as_ref()
+            .ok_or(anyhow!("Preimage is required"))?;
+        
+        let preimage_hex = hex::decode(preimage).unwrap();
 
         // Build and set the witness
         let witness = self.build_redeem_witness(
@@ -145,7 +151,8 @@ impl HTLC {
             &redeem_script,
             &spend_info,
             &tx_commitment_spec,
-            &contract_components,
+            signature_components, // Pass borrowed signature_components
+            &preimage_hex,
         )?;
         grinded_txn.input[0].witness = witness;
 
@@ -165,7 +172,8 @@ impl HTLC {
         redeem_script: &ScriptBuf,
         spend_info: &TaprootSpendInfo,
         tx_commitment_spec: &TxCommitmentSpec,
-        contract_components: &signature_building::ContractComponents,
+        signature_components: &Vec<Vec<u8>>,
+        preimage: &Vec<u8> // Updated to take SignatureComponents directly
     ) -> Result<Witness> {
         // Compute witness components
         let witness_components = get_sigmsg_components(
@@ -180,8 +188,27 @@ impl HTLC {
 
         let mut witness = Witness::new();
 
+        let mut htlc_witness_components = Vec::new();
+        //encoded leaf 
+        let mut encoded_leaf = witness_components[10].clone();
+        encoded_leaf.extend(witness_components[11].clone());
+        encoded_leaf.extend(witness_components[12].clone());
+        htlc_witness_components.push(encoded_leaf);
+
+        //pervout scriptpubkey + input sequencer
+        let mut prevout_script = witness_components[7].clone();
+        prevout_script.extend(witness_components[8].clone());
+        htlc_witness_components.push(prevout_script);
+
+        //amount
+        htlc_witness_components.push(witness_components[6].clone());
+
+        //pervout 
+        htlc_witness_components.push(witness_components[5].clone());
+
+
         // Push witness components
-        for component in witness_components.iter() {
+        for component in htlc_witness_components.iter() {
             debug!(
                 "pushing component <0x{}> into the witness",
                 component.to_hex_string(Case::Lower)
@@ -189,17 +216,22 @@ impl HTLC {
             witness.push(component.as_slice());
         }
 
+
         // Compute and mangle signature
         let computed_signature = signature_building::compute_signature_from_components(
-            &contract_components.signature_components,
+            signature_components, // Use directly
         )?;
         let mangled_signature: [u8; 63] = computed_signature[0..63].try_into().unwrap();
         witness.push(mangled_signature);
         witness.push([computed_signature[63]]);
         witness.push([computed_signature[63] + 1]);
+        
+        //pushing preimage 
+        witness.push(preimage);
 
         // Push redeem script and control block
         witness.push(redeem_script.as_bytes());
+
         let control_block = spend_info
             .control_block(&(redeem_script.clone(), LeafVersion::TapScript))
             .expect("control block should work");
