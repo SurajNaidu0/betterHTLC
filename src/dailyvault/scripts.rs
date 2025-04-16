@@ -175,7 +175,7 @@ pub(crate) fn htlc_refund_script(refund_address:&Address, lock_time: &i64) -> Sc
     script
 }
 
-pub(crate) fn htlc_instant_refund(x_only_pubkey: XOnlyPublicKey) {
+// pub(crate) fn htlc_instant_refund(x_only_pubkey: XOnlyPublicKey) {
    
-}
+// }
 
