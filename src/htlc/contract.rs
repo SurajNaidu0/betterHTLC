@@ -48,6 +48,7 @@ pub struct HtlcFunded {
 
 const NETWORK:Network = Network::Regtest;
 
+
 impl HTLC {
     pub(crate) fn default() -> Self {
         Self {
