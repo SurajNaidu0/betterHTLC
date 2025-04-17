@@ -1,4 +1,4 @@
-use crate::dailyvault::signature_building::{BIP0340_CHALLENGE_TAG, DUST_AMOUNT, G_X, TAPSIGHASH_TAG};
+use crate::htlc::signature_building::{BIP0340_CHALLENGE_TAG, DUST_AMOUNT, G_X, TAPSIGHASH_TAG};
 use bitcoin::opcodes::all::{
     OP_2DUP, OP_CAT, OP_CHECKSIG, OP_CSV, OP_DROP, OP_DUP, OP_EQUALVERIFY, OP_FROMALTSTACK,
     OP_HASH256, OP_ROT, OP_SHA256, OP_SWAP, OP_TOALTSTACK, OP_CHECKSIGVERIFY
@@ -163,7 +163,7 @@ pub(crate) fn htlc_refund_script(refund_address:&Address, lock_time: &i64) -> Sc
         .push_opcode(OP_SWAP) 
         .push_opcode(OP_CHECKSIG);
     let script = builder.into_script();
-    println!("script: {:?}", script);
+    // println!("script: {:?}", script);
     script
 }
 

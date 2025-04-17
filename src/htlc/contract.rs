@@ -18,35 +18,45 @@ use secp256kfun::marker::{EvenY, NonZero, Public};
 use secp256kfun::{Point, G};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use crate::dailyvault::scripts::{
+use crate::htlc::scripts::{
     htlc_redeem_script, htlc_refund_script
 };
-use crate::dailyvault::signature_building;
-use crate::dailyvault::signature_building::{get_sigmsg_components, TxCommitmentSpec};
-
+use crate::htlc::signature_building;
+use crate::htlc::signature_building::{get_sigmsg_components, TxCommitmentSpec};
+#[derive(Debug)]
 pub(crate) struct HTLC {
     pub htlc_funded_utxo: Option<HtlcFunded>,
     pub redeem_address: Option<Address>,
     pub redeem_config: Option<RedeemConfig>,
     pub refund_config: Option<RefundConfig>,
 }
-
+#[derive(Debug)]
 pub struct RefundConfig {
     pub refund_address: Address,
     pub refund_lock: i64,
 }
-
+#[derive(Debug)]
 pub struct RedeemConfig {
     pub payment_hash: String,
     pub preimage: Option<String>, // Changed to Option<String>
 }
-
+#[derive(Debug)]
 pub struct HtlcFunded {
     pub htlc_outpoint: OutPoint,
     pub amount: Amount,
 }
 
+const NETWORK:Network = Network::Regtest;
+
 impl HTLC {
+    pub(crate) fn default() -> Self {
+        Self {
+            htlc_funded_utxo: None,
+            redeem_address: None,
+            redeem_config: None,
+            refund_config: None,
+        }
+    }
     pub(crate) fn set_funded_htlc(&mut self, outpoint: OutPoint, amount: Amount) {
         self.htlc_funded_utxo = Some(HtlcFunded {
             htlc_outpoint: outpoint,
@@ -96,7 +106,7 @@ impl HTLC {
         let leaf_hash = TapLeafHash::from_script(&redeem_script, LeafVersion::TapScript);
 
         // Define the previous HTLC output (to be spent)
-        let htlc_address = self.address(Network::Bitcoin)?; // Assuming Bitcoin network
+        let htlc_address = self.address(NETWORK)?; // Assuming Bitcoin network
         let htlc_txout = TxOut {
             script_pubkey: htlc_address.script_pubkey(),
             value: htlc_funded.amount,
@@ -262,7 +272,7 @@ impl HTLC {
         let leaf_hash = TapLeafHash::from_script(&refund_script, LeafVersion::TapScript);
 
         // Define the previous HTLC output (to be spent)
-        let htlc_address = self.address(Network::Bitcoin)?; // Assuming Bitcoin network
+        let htlc_address = self.address(NETWORK)?; // Assuming Bitcoin network
         let htlc_txout = TxOut {
             script_pubkey: htlc_address.script_pubkey(),
             value: htlc_funded.amount,
@@ -326,7 +336,7 @@ impl HTLC {
     }
 }
 
-fn add_fee_to_txn(txn:&mut Transaction,fee_outpoint:OutPoint,fee_utxo_value:Amount,fee_sats:Amount,fee_refund_address:Address)->Result<&mut Transaction> {
+pub(crate) fn add_fee_to_txn(txn:&mut Transaction,fee_outpoint:OutPoint,fee_utxo_value:Amount,fee_sats:Amount,fee_refund_address:Address)->Result<&mut Transaction> {
     // Placeholder for fee calculation and transaction adjustment
     // This function should calculate the fee and adjust the transaction accordingly
     let input = TxIn {
