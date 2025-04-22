@@ -45,8 +45,9 @@ pub struct HtlcFunded {
     pub htlc_outpoint: OutPoint,
     pub amount: Amount,
 }
+// Network constant for Regtest
+const NETWORK:Network = Network::Signet;
 
-const NETWORK:Network = Network::Regtest;
 
 
 impl HTLC {
@@ -144,6 +145,8 @@ impl HTLC {
             signature_building::GrindField::LockTime,
             &[htlc_txout.clone()],
             leaf_hash,
+            TapSighashType::SinglePlusAnyoneCanPay,
+            
         )?;
         let signature_components = &contract_components.signature_components; // Borrow before move
         let mut grinded_txn = contract_components.transaction; // Move after borrow
@@ -154,7 +157,7 @@ impl HTLC {
         let preimage_hex = hex::decode(preimage).unwrap();
 
         // Build and set the witness
-        let witness = self.build_witness(
+        let witness = self.build_witness_single_anyonecanpay(
             &grinded_txn,
             0,
             &[htlc_txout],
@@ -174,7 +177,7 @@ impl HTLC {
         Ok(grinded_txn)
     }
 
-    fn build_witness(
+    fn build_witness_single_anyonecanpay(
         &self,
         grinded_txn: &Transaction,
         input_index: usize,
@@ -194,7 +197,7 @@ impl HTLC {
             prevouts,
             None,
             leaf_hash,
-            TapSighashType::SinglePlusAnyoneCanPay,
+            TapSighashType::Default,
         )?;
 
         let mut witness = Witness::new();
@@ -219,7 +222,7 @@ impl HTLC {
 
 
         // Push witness components - switch 
-        for component in htlc_witness_components.iter() {
+        for component in witness_components.iter() {
             debug!(
                 "pushing component <0x{}> into the witness",
                 component.to_hex_string(Case::Lower)
@@ -310,13 +313,14 @@ impl HTLC {
             signature_building::GrindField::LockTime,
             &[htlc_txout.clone()],
             leaf_hash,
+            TapSighashType::SinglePlusAnyoneCanPay,
         )?;
 
         let signature_components = &contract_components.signature_components; // Borrow before move
         let mut grinded_txn = contract_components.transaction; // Move after borrow
 
         // Build and set the witness
-        let witness = self.build_witness(
+        let witness = self.build_witness_single_anyonecanpay(
             &grinded_txn,
             0,
             &[htlc_txout],
@@ -335,8 +339,105 @@ impl HTLC {
 
         Ok(grinded_txn)    
     }
-}
+    // doesnt need a extra input the user can set fee in the stack
+    pub(crate) fn create_redeem_tx_with_fee(&self,fee_amount:Amount)->Result<Transaction> {
+          // Validate required fields 
+          if self.htlc_funded_utxo.is_none() || self.redeem_address.is_none() || self.redeem_config.is_none() {
+            return Err(anyhow!("Missing required fields for redeem transaction"));
+        }
 
+        // Extract values safely
+        let htlc_funded = self.htlc_funded_utxo.as_ref().unwrap();
+        let redeem_address = self.redeem_address.as_ref().unwrap();
+        let redeem_config = self.redeem_config.as_ref().unwrap();
+
+        // Compute Taproot spend info once
+        let spend_info = self.taproot_spend_info()?;
+
+        // Create redeem script and leaf hash
+        let redeem_script = htlc_redeem_script(redeem_address, &redeem_config.payment_hash);
+        let leaf_hash = TapLeafHash::from_script(&redeem_script, LeafVersion::TapScript);
+
+        // Define the previous HTLC output (to be spent)
+        let htlc_address = self.address(NETWORK)?; // Assuming Bitcoin network
+        let htlc_txout = TxOut {
+            script_pubkey: htlc_address.script_pubkey(),
+            value: htlc_funded.amount,
+        };
+
+        // Create transaction input
+        let htlc_txin = TxIn {
+            previous_output: htlc_funded.htlc_outpoint,
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::MAX,
+            witness: Witness::new(),
+        };
+
+        // Create transaction output
+        let htlc_output = TxOut {
+            script_pubkey: redeem_address.script_pubkey(),
+            value: htlc_funded.amount - fee_amount,
+        };
+
+        // Construct initial transaction
+        let htlc_tx = Transaction {
+            version: Version(2),
+            lock_time: LockTime::ZERO,
+            input: vec![htlc_txin],
+            output: vec![htlc_output],
+        };
+
+        // Grind the transaction
+        let tx_commitment_spec = TxCommitmentSpec {
+            ..Default::default()
+        };
+        let contract_components = signature_building::grind_transaction(
+            htlc_tx,
+            signature_building::GrindField::LockTime,
+            &[htlc_txout.clone()],
+            leaf_hash,
+            TapSighashType::Default,
+        )?;
+        let signature_components = &contract_components.signature_components; // Borrow before move
+        let mut grinded_txn = contract_components.transaction; // Move after borrow
+
+        let message = compute_taproot_sighash(
+            &grinded_txn,
+            0,
+            &[htlc_txout.clone()],
+            leaf_hash,
+            TapSighashType::Default,
+        )?;
+
+        println!("Message: {}", message);
+
+        let preimage = redeem_config.preimage.as_ref()
+            .ok_or(anyhow!("Preimage is required"))?;
+        
+        let preimage_hex = hex::decode(preimage).unwrap();
+
+        // Build and set the witness
+        let witness = self.build_witness_single_anyonecanpay(
+            &grinded_txn,
+            0,
+            &[htlc_txout],
+            leaf_hash,
+            &redeem_script,
+            &spend_info,
+            &tx_commitment_spec,
+            signature_components, // Pass borrowed signature_components
+            Some(&preimage_hex),
+        )?;
+        grinded_txn.input[0].witness = witness;
+
+        // Serialize and print the raw transaction for debugging
+        let raw_tx_hex = hex::encode(serialize(&grinded_txn));
+        println!("Raw transaction hex: {}", raw_tx_hex);
+
+        Ok(grinded_txn)
+    }
+}
+//To add fee for scripts with sig single anyone can pay
 pub(crate) fn add_fee_to_txn(txn:&mut Transaction,fee_outpoint:OutPoint,fee_utxo_value:Amount,fee_sats:Amount,fee_refund_address:Address)->Result<&mut Transaction> {
     // Placeholder for fee calculation and transaction adjustment
     // This function should calculate the fee and adjust the transaction accordingly
@@ -361,4 +462,20 @@ pub(crate) fn add_fee_to_txn(txn:&mut Transaction,fee_outpoint:OutPoint,fee_utxo
     Ok(txn)
 }
 
-
+pub(crate) fn compute_taproot_sighash(
+    tx: &Transaction,
+    input_index: usize,
+    prevouts: &[TxOut],
+    leaf_hash: TapLeafHash,
+    sighash_type: TapSighashType,
+) -> Result<Message, bitcoin::secp256k1::Error> {
+    let mut sighash_cache = SighashCache::new(tx);
+    let sighash = sighash_cache
+        .taproot_script_spend_signature_hash(
+            input_index,
+            &Prevouts::All(prevouts),
+            leaf_hash,
+            sighash_type,
+        ).expect("Failed to compute signature");
+    Message::from_digest_slice(&sighash[..])
+}

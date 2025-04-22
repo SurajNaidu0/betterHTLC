@@ -427,6 +427,7 @@ pub(crate) fn grind_transaction<S>(
     grind_field: GrindField,
     prevouts: &[TxOut],
     leaf_hash: S,
+    sighash_type: TapSighashType
 ) -> anyhow::Result<ContractComponents>
 where
     S: Into<TapLeafHash> + Clone,
@@ -456,7 +457,7 @@ where
             prevouts,
             None,
             leaf_hash.clone(),
-            TapSighashType::SinglePlusAnyoneCanPay,
+            sighash_type,
         )?;
         let sigmsg = compute_sigmsg_from_components(&components_for_signature)?;
         let challenge = compute_challenge(&sigmsg);

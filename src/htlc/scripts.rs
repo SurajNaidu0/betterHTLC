@@ -167,6 +167,12 @@ pub(crate) fn htlc_refund_script(refund_address:&Address, lock_time: &i64) -> Sc
     script
 }
 
+// pub(crate) fn htlc_redeem_script_without_feeutxo(reedeem_address:&Address,payment_hash:&str) -> ScriptBuf {
+//     let mut builder = Script::builder();
+//     builder = builder
+    
+   
+// }
 // pub(crate) fn htlc_instant_refund(x_only_pubkey: XOnlyPublicKey) {
    
 // }
