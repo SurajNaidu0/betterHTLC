@@ -19,7 +19,7 @@ use secp256kfun::{Point, G};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use crate::htlc::scripts::{
-    htlc_redeem_script, htlc_refund_script
+    htlc_redeem_script, htlc_refund_script, htlc_redeem_script_with_fee,
 };
 use crate::htlc::signature_building;
 use crate::htlc::signature_building::{get_sigmsg_components, TxCommitmentSpec};
@@ -82,6 +82,24 @@ impl HTLC {
             .add_leaf(1, htlc_refund_script(&self.refund_config.as_ref().unwrap().refund_address, &self.refund_config.as_ref().unwrap().refund_lock))?
             .finalize(&secp, nums_key)
             .expect("finalizing taproot spend info with a NUMS point should always work"))
+    }
+
+    pub fn taproot_spend_info_with_fee(&self)-> Result<TaprootSpendInfo> {
+        let hash = sha256::Hash::hash(G.to_bytes_uncompressed().as_slice());
+        let point: Point<EvenY, Public, NonZero> = Point::from_xonly_bytes(hash.into_32())
+            .ok_or(anyhow!("G_X hash should be a valid x-only point"))?;
+        let nums_key = XOnlyPublicKey::from_slice(point.to_xonly_bytes().as_slice())?;
+        let secp = Secp256k1::new();
+        let payment_hash = self.redeem_config.as_ref().unwrap().payment_hash.as_str();
+        Ok(TaprootBuilder::new()
+            .add_leaf(1, htlc_redeem_script_with_fee(self.redeem_address.as_ref().unwrap(), payment_hash))?
+            .add_leaf(1, htlc_refund_script(&self.refund_config.as_ref().unwrap().refund_address, &self.refund_config.as_ref().unwrap().refund_lock))? // to be changed to refund with fee
+            .finalize(&secp, nums_key)
+            .expect("finalizing taproot spend info with a NUMS point should always work"))
+    }
+    pub(crate) fn address_with_fee(&self, network: Network) -> Result<Address> {
+        let spend_info = self.taproot_spend_info_with_fee()?;
+        Ok(Address::p2tr_tweaked(spend_info.output_key(), network))
     }
 
     pub(crate) fn address(&self, network: Network) -> Result<Address> {
@@ -197,7 +215,7 @@ impl HTLC {
             prevouts,
             None,
             leaf_hash,
-            TapSighashType::Default,
+            TapSighashType::SinglePlusAnyoneCanPay,
         )?;
 
         let mut witness = Witness::new();
@@ -352,14 +370,14 @@ impl HTLC {
         let redeem_config = self.redeem_config.as_ref().unwrap();
 
         // Compute Taproot spend info once
-        let spend_info = self.taproot_spend_info()?;
+        let spend_info = self.taproot_spend_info_with_fee()?;
 
         // Create redeem script and leaf hash
-        let redeem_script = htlc_redeem_script(redeem_address, &redeem_config.payment_hash);
+        let redeem_script = htlc_redeem_script_with_fee(redeem_address, &redeem_config.payment_hash);
         let leaf_hash = TapLeafHash::from_script(&redeem_script, LeafVersion::TapScript);
 
         // Define the previous HTLC output (to be spent)
-        let htlc_address = self.address(NETWORK)?; // Assuming Bitcoin network
+        let htlc_address = self.address_with_fee(NETWORK)?; // Assuming Bitcoin network
         let htlc_txout = TxOut {
             script_pubkey: htlc_address.script_pubkey(),
             value: htlc_funded.amount,
@@ -417,7 +435,7 @@ impl HTLC {
         let preimage_hex = hex::decode(preimage).unwrap();
 
         // Build and set the witness
-        let witness = self.build_witness_single_anyonecanpay(
+        let witness = self.build_witness_all(
             &grinded_txn,
             0,
             &[htlc_txout],
@@ -435,6 +453,87 @@ impl HTLC {
         println!("Raw transaction hex: {}", raw_tx_hex);
 
         Ok(grinded_txn)
+    }
+
+    fn build_witness_all(
+        &self,
+        grinded_txn: &Transaction,
+        input_index: usize,
+        prevouts: &[TxOut],
+        leaf_hash: TapLeafHash,
+        redeem_script: &ScriptBuf,
+        spend_info: &TaprootSpendInfo,
+        tx_commitment_spec: &TxCommitmentSpec,
+        signature_components: &Vec<Vec<u8>>,
+        preimage: Option<&Vec<u8>> // Updated to take SignatureComponents directly
+    ) -> Result<Witness> {
+        // Compute witness components
+        let witness_components = get_sigmsg_components(
+            tx_commitment_spec,
+            grinded_txn,
+            input_index,
+            prevouts,
+            None,
+            leaf_hash,
+            TapSighashType::Default,
+        )?;
+
+        let mut witness = Witness::new();
+
+        let mut htlc_witness_components = Vec::new();
+        //encoded leaf 
+        let mut encoded_leaf = witness_components[10].clone();
+        encoded_leaf.extend(witness_components[11].clone());
+        encoded_leaf.extend(witness_components[12].clone());
+        htlc_witness_components.push(encoded_leaf);
+
+        //pervout scriptpubkey + input sequencer
+        let mut prevout_script = witness_components[7].clone();
+        prevout_script.extend(witness_components[8].clone());
+        htlc_witness_components.push(prevout_script);
+
+        //amount
+        htlc_witness_components.push(witness_components[6].clone());
+
+        //pervout 
+        htlc_witness_components.push(witness_components[5].clone());
+
+
+        // Push witness components - switch 
+        for component in witness_components.iter() {
+            debug!(
+                "pushing component <0x{}> into the witness",
+                component.to_hex_string(Case::Lower)
+            );
+            witness.push(component.as_slice());
+        }
+
+
+        // Compute and mangle signature
+        let computed_signature = signature_building::compute_signature_from_components(
+            signature_components, // Use directly
+        )?;
+        let mangled_signature: [u8; 63] = computed_signature[0..63].try_into().unwrap();
+        witness.push(mangled_signature);
+        witness.push([computed_signature[63]]);
+        witness.push([computed_signature[63] + 1]);
+        
+        //pushing preimage 
+        if preimage != None {
+            witness.push(preimage.unwrap());
+        }
+
+       
+
+        // Push redeem script and control block
+        witness.push(redeem_script.as_bytes());
+
+        let control_block = spend_info
+            .control_block(&(redeem_script.clone(), LeafVersion::TapScript))
+            .expect("control block should work");
+        witness.push(control_block.serialize());
+
+        Ok(witness)
     }
 }
 //To add fee for scripts with sig single anyone can pay
