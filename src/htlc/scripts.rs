@@ -168,7 +168,7 @@ pub(crate) fn htlc_refund_script(refund_address:&Address, lock_time: &i64) -> Sc
 }
 
 pub(crate) fn htlc_redeem_script_with_fee(reedeem_address:&Address,payment_hash:&str) -> ScriptBuf {
-    let mut builder = Script::builder();
+      let mut builder = Script::builder();
     builder = builder
     .push_opcode(OP_SHA256)
     .push_slice(PushBytesBuf::try_from(hex::decode(payment_hash).expect("Invalid secret hash hex")).unwrap())
@@ -176,19 +176,14 @@ pub(crate) fn htlc_redeem_script_with_fee(reedeem_address:&Address,payment_hash:
     .push_opcode(OP_TOALTSTACK)
     .push_opcode(OP_TOALTSTACK)
     .push_opcode(OP_TOALTSTACK) 
-    .push_slice(PushBytesBuf::try_from(hex::decode("0083020000000000000002").expect("Invalid secret hash hex")).unwrap())
-    .push_opcode(OP_SWAP)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
     .push_opcode(OP_CAT)
     .push_opcode(OP_SWAP)
-    .push_opcode(OP_DUP) 
-    .push_opcode(OP_TOALTSTACK)
-    .push_opcode(OP_CAT)
-    .push_opcode(OP_SWAP)
-    .push_opcode(OP_CAT)
-    .push_opcode(OP_FROMALTSTACK)
     // Push [length, script_pubkey_bytes...]
         .push_slice({
-            let script_pubkey = redeem_address.script_pubkey(); // Store Script
+            let script_pubkey = reedeem_address.script_pubkey(); // Store Script
             let script_bytes = script_pubkey.as_bytes(); // Borrow
             let length = script_bytes.len() as u8;
             if script_bytes.len() > 255 {
@@ -200,8 +195,15 @@ pub(crate) fn htlc_redeem_script_with_fee(reedeem_address:&Address,payment_hash:
         })
     .push_opcode(OP_CAT)
     .push_opcode(OP_SHA256)
-    .push_opcode(OP_CAT)
     .push_opcode(OP_SWAP)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
+    .push_opcode(OP_CAT)
     .push_opcode(OP_CAT)
     .push_slice(*TAPSIGHASH_TAG) // push tag
         .push_opcode(OP_SHA256) // hash tag

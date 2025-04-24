@@ -21,7 +21,7 @@ import hashlib
     '00000000', #locktime
     '89b0d51bc691fe7f759a848d636ae6134a1c867cbc9ed7b391baa9068494ebba',
     'a086010000000000', #previous amount
-    'a4948faaa007be758a8c2a380a2beaf2cd807e5d54bae2a4e7710f221c66397a',
+    '535f1cf1b9d144fad5d20ebe8e0dfa403f4d9fe4ad7cc6d88ddce78f6c694d60',
     'ad95131bc0b799c0b1af477fb14fcf26a6a9f76079e48bf090acb7e8367bfd0e',
     'b882010000000000',#amount to send 
     '225120527b67c93c5b95dbf894d1e4c8dccce88bdcb83684e6ad65d32d48880c6b1924'#redeem address (should be in the script),
@@ -40,17 +40,17 @@ stack = [
     '00000000', #locktime
     '89b0d51bc691fe7f759a848d636ae6134a1c867cbc9ed7b391baa9068494ebba',
     '184c0ede118ec8cd31f699524bae48a81ed01ded5f8d08f2f4ff4286b33b0270', #previous amount
-    'a4948faaa007be758a8c2a380a2beaf2cd807e5d54bae2a4e7710f221c66397a',
+    '535f1cf1b9d144fad5d20ebe8e0dfa403f4d9fe4ad7cc6d88ddce78f6c694d60',
     'ad95131bc0b799c0b1af477fb14fcf26a6a9f76079e48bf090acb7e8367bfd0e',
     'b882010000000000',#amount to send 
     '02', 
     '00000000', 
-    '7721e57eea76a99c7e60f94cd2dfdf1e518ecb92b7d9738745b5ade60adb4252', #leaf
+    '03a65fdb549e00458973625d0af0aeea0339df96214bfe336f7d54a9fd00f52e', #leaf
     '00', 
     'ffffffff',
-    '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798224fde4ccb32c50a04c39c5d00134174fd69d3c5a9e8b5d88ba983ac096ac2',
-    'ab',
-    'ac',
+    '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817981ee741ca7370eeca61810ca145990955db654dec41094513e1f8e3dbd977f3',
+    'af',
+    'b0',
     '6644fd23b8327a04d86bdadbeba6903c1e9bfef68f9c9ee7c00cc8f59529430c']
 #'225120527b67c93c5b95dbf894d1e4c8dccce88bdcb83684e6ad65d32d48880c6b1924',#redeem address (should be in the script),
 

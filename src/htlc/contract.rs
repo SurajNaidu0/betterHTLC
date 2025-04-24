@@ -480,27 +480,12 @@ impl HTLC {
 
         let mut witness = Witness::new();
 
-        let mut htlc_witness_components = Vec::new();
-        //encoded leaf 
-        let mut encoded_leaf = witness_components[10].clone();
-        encoded_leaf.extend(witness_components[11].clone());
-        encoded_leaf.extend(witness_components[12].clone());
-        htlc_witness_components.push(encoded_leaf);
-
-        //pervout scriptpubkey + input sequencer
-        let mut prevout_script = witness_components[7].clone();
-        prevout_script.extend(witness_components[8].clone());
-        htlc_witness_components.push(prevout_script);
-
-        //amount
-        htlc_witness_components.push(witness_components[6].clone());
-
-        //pervout 
-        htlc_witness_components.push(witness_components[5].clone());
-
+        let mut htlc_witness_components = witness_components.clone();
+        let value_bytes = grinded_txn.output[0].value.to_sat().to_le_bytes().to_vec();
+        htlc_witness_components[8] = value_bytes;
 
         // Push witness components - switch 
-        for component in witness_components.iter() {
+        for component in htlc_witness_components.iter() {
             debug!(
                 "pushing component <0x{}> into the witness",
                 component.to_hex_string(Case::Lower)
@@ -522,8 +507,6 @@ impl HTLC {
         if preimage != None {
             witness.push(preimage.unwrap());
         }
-
-       
 
         // Push redeem script and control block
         witness.push(redeem_script.as_bytes());
