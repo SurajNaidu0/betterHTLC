@@ -98,7 +98,7 @@ pub(crate) fn get_sigmsg_components<S: Into<TapLeafHash>>(
         TapSighashType::NonePlusAnyoneCanPay => (bitcoin::TapSighashType::None, true),
         TapSighashType::SinglePlusAnyoneCanPay => (TapSighashType::Single, true),
     };
-    
+
     if spec.epoch {
         let mut epoch = Vec::new();
         0u8.consensus_encode(&mut epoch)?;
@@ -427,7 +427,6 @@ pub(crate) fn grind_transaction<S>(
     grind_field: GrindField,
     prevouts: &[TxOut],
     leaf_hash: S,
-    sighash_type: TapSighashType
 ) -> anyhow::Result<ContractComponents>
 where
     S: Into<TapLeafHash> + Clone,
@@ -457,7 +456,7 @@ where
             prevouts,
             None,
             leaf_hash.clone(),
-            sighash_type,
+            TapSighashType::Default,
         )?;
         let sigmsg = compute_sigmsg_from_components(&components_for_signature)?;
         let challenge = compute_challenge(&sigmsg);
