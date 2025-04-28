@@ -103,7 +103,7 @@ fn deposit(refund_address:&str,redeem_address:&str,locktime:i64,payment_hash:&st
 fn ad_hoc_testing(settings: &Settings)-> Result<()>{
     let preimage = "6644fd23b8327a04d86bdadbeba6903c1e9bfef68f9c9ee7c00cc8f59529430c";
     let payment_hash = "7d71c056feba9afeb8ee135b8c83695b1ecf948a96d24494592a5743c6779a57";
-    let locktime = 100 as i64;
+    let locktime = 20 as i64;
 
     let miner_wallet = Wallet::new("miner", &settings);
     while miner_wallet.get_balance()? < Amount::from_btc(2.0f64)? {
@@ -116,7 +116,7 @@ fn ad_hoc_testing(settings: &Settings)-> Result<()>{
 
     // minner sending funds to initializer wallet
     let initializer_address = initializer_wallet.get_new_address()?;
-    let deposit_tx = miner_wallet.send(&initializer_address, Amount::from_sat(100100))?;
+    let deposit_tx = miner_wallet.send(&initializer_address, Amount::from_sat(100_000_000))?;
     miner_wallet.mine_blocks(Some(1))?; // confirm the transfer to initializer wallet
     println!("initializer address balance: {:?}", initializer_wallet.get_balance()?);
 
@@ -131,9 +131,8 @@ fn ad_hoc_testing(settings: &Settings)-> Result<()>{
 
     let redeemer_address = redeem_wallet.get_new_address()?;
     //setting refund config
-    let refund_address = initializer_address;
     let refund_config = RefundConfig {
-        refund_address: refund_address,
+        refund_address: initializer_address,
         refund_lock: locktime,
     };
 
@@ -163,17 +162,30 @@ fn ad_hoc_testing(settings: &Settings)-> Result<()>{
     };
     htlc_contract.htlc_funded_utxo = Some(htlc_funded);
 
-    //creating redeem transaction
+    //creating redeem transaction with fee
+    // let mut fee_amount = Amount::from_sat(1000);
+    // let mut redeem_tx:Transaction = htlc_contract.create_redeem_tx_with_fee(fee_amount)?;
+    // let mut serialized_tx = Vec::new();
+    // redeem_tx.consensus_encode(&mut serialized_tx).unwrap();
+    // println!("serialized tx: {:?}", serialized_tx.raw_hex());
+    // let txid = redeem_wallet.broadcast_tx(&serialized_tx, None)?;
+    // miner_wallet.mine_blocks(Some(1))?;
+    // println!("sent redeem transaction txid: {}", txid);
+    // println!("redeem address balance: {:?}", redeem_wallet.get_balance()?);
+
+    //creating creating refund trantion with fee
+    //creatint 101 block to get utxo to be refundable
+    for i in 0..102 {
+        miner_wallet.mine_blocks(Some(1))?;
+    }
     let mut fee_amount = Amount::from_sat(1000);
-    let mut redeem_tx:Transaction = htlc_contract.create_redeem_tx_with_fee(fee_amount)?;
+    let mut refund_tx:Transaction = htlc_contract.create_refund_tx_with_fee(fee_amount)?;
     let mut serialized_tx = Vec::new();
-    redeem_tx.consensus_encode(&mut serialized_tx).unwrap();
-    println!("serialized tx: {:?}", serialized_tx.raw_hex());
+    refund_tx.consensus_encode(&mut serialized_tx).unwrap();
     let txid = redeem_wallet.broadcast_tx(&serialized_tx, None)?;
     miner_wallet.mine_blocks(Some(1))?;
-    println!("sent redeem transaction txid: {}", txid);
-    println!("redeem address balance: {:?}", redeem_wallet.get_balance()?);
-
+    println!("sent refund transaction txid: {}", txid);
+    println!("refund address balance: {:?}", initializer_wallet.get_balance()?);
 
     // //fee wallet
     // let fee_wallet = Wallet::new("fee", &settings);
@@ -242,7 +254,8 @@ fn ad_hoc_testing(settings: &Settings)-> Result<()>{
 //     let txn_weight = txn.weight().to_vbytes_ceil();
 //     println!("txn weight: {:?}", txn_weight);
 
-//     let txn = htlc.create_refund_tx().unwrap();
+//     let fee_amount = Amount::from_sat(1000);
+//     let txn = htlc.create_refund_tx_with_fee(fee_amount).unwrap();
 //     let txn_weight = txn.weight().to_vbytes_ceil();
 //     println!("txn weight: {:?}", txn_weight);
 
