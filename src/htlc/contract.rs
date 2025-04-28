@@ -19,7 +19,7 @@ use secp256kfun::{Point, G};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use crate::htlc::scripts::{
-    htlc_redeem_script, htlc_refund_script, htlc_redeem_script_with_fee,
+    htlc_redeem_script, htlc_refund_script, htlc_redeem_script_with_fee,htlc_refund_script_with_fee
 };
 use crate::htlc::signature_building;
 use crate::htlc::signature_building::{get_sigmsg_components, TxCommitmentSpec};
@@ -93,7 +93,7 @@ impl HTLC {
         let payment_hash = self.redeem_config.as_ref().unwrap().payment_hash.as_str();
         Ok(TaprootBuilder::new()
             .add_leaf(1, htlc_redeem_script_with_fee(self.redeem_address.as_ref().unwrap(), payment_hash))?
-            .add_leaf(1, htlc_refund_script(&self.refund_config.as_ref().unwrap().refund_address, &self.refund_config.as_ref().unwrap().refund_lock))? // to be changed to refund with fee
+            .add_leaf(1, htlc_refund_script_with_fee(&self.refund_config.as_ref().unwrap().refund_address, &self.refund_config.as_ref().unwrap().refund_lock))? // to be changed to refund with fee
             .finalize(&secp, nums_key)
             .expect("finalizing taproot spend info with a NUMS point should always work"))
     }
@@ -163,7 +163,7 @@ impl HTLC {
             signature_building::GrindField::LockTime,
             &[htlc_txout.clone()],
             leaf_hash,
-            TapSighashType::SinglePlusAnyoneCanPay,
+            // TapSighashType::SinglePlusAnyoneCanPay,
             
         )?;
         let signature_components = &contract_components.signature_components; // Borrow before move
@@ -331,7 +331,7 @@ impl HTLC {
             signature_building::GrindField::LockTime,
             &[htlc_txout.clone()],
             leaf_hash,
-            TapSighashType::SinglePlusAnyoneCanPay,
+            // TapSighashType::SinglePlusAnyoneCanPay,
         )?;
 
         let signature_components = &contract_components.signature_components; // Borrow before move
@@ -414,7 +414,7 @@ impl HTLC {
             signature_building::GrindField::LockTime,
             &[htlc_txout.clone()],
             leaf_hash,
-            TapSighashType::Default,
+            // TapSighashType::Default,
         )?;
         let signature_components = &contract_components.signature_components; // Borrow before move
         let mut grinded_txn = contract_components.transaction; // Move after borrow
@@ -453,6 +453,104 @@ impl HTLC {
         println!("Raw transaction hex: {}", raw_tx_hex);
 
         Ok(grinded_txn)
+    }
+
+    pub(crate) fn create_refund_tx_with_fee(&self,fee_amount:Amount) -> Result<Transaction> {
+        // Validate required fields
+        if self.htlc_funded_utxo.is_none() || self.refund_config.is_none() {
+            return Err(anyhow!("Missing required fields for redeem transaction"));
+        }
+
+        // Extract values safely
+        let htlc_funded = self.htlc_funded_utxo.as_ref().unwrap();
+        let refund_config = self.refund_config.as_ref().unwrap();
+
+        // Compute Taproot spend info once
+        let spend_info = self.taproot_spend_info_with_fee()?;
+
+        // Create refund script and leaf hash
+        let refund_script = htlc_refund_script_with_fee(&refund_config.refund_address, &refund_config.refund_lock);
+        let leaf_hash = TapLeafHash::from_script(&refund_script, LeafVersion::TapScript);
+
+        // Define the previous HTLC output (to be spent)
+        let htlc_address = self.address(NETWORK)?; // Assuming Bitcoin network
+        let htlc_txout = TxOut {
+            script_pubkey: htlc_address.script_pubkey(),
+            value: htlc_funded.amount,
+        };
+
+        // Create transaction input
+        let mut htlc_txin = TxIn {
+            previous_output: htlc_funded.htlc_outpoint,
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::from_height(refund_config.refund_lock as u16),
+            witness: Witness::new(),
+        };
+
+        // Create transaction output
+        let htlc_output = TxOut {
+            script_pubkey: refund_config.refund_address.script_pubkey(),
+            value: htlc_funded.amount - fee_amount,
+        };
+
+        // Construct initial transaction
+        let htlc_tx = Transaction {
+            version: Version(2),
+            lock_time: LockTime::ZERO,
+            input: vec![htlc_txin.clone()],
+            output: vec![htlc_output],
+        };
+
+        // Grind the transaction
+        let tx_commitment_spec = TxCommitmentSpec {
+            ..Default::default()
+        };
+        let raw_tx_hex = hex::encode(serialize(&htlc_tx));
+        println!("Raw transaction hex: {}", raw_tx_hex);
+        
+        let contract_components = signature_building::grind_transaction(
+            htlc_tx,
+            signature_building::GrindField::LockTime,
+            &[htlc_txout.clone()],
+            leaf_hash,
+        )?;
+
+        let signature_components = &contract_components.signature_components; // Borrow before move
+        let mut grinded_txn = contract_components.transaction; // Move after borrow
+        let raw_tx_hex = hex::encode(serialize(&grinded_txn));
+        println!("Raw transaction hex: {}", raw_tx_hex);
+
+
+        let message = compute_taproot_sighash(
+            &grinded_txn,
+            0,
+            &[htlc_txout.clone()],
+            leaf_hash,
+            TapSighashType::Default,
+        )?;
+
+        println!("Message: {}", message);
+
+        // Build and set the witness
+        let witness = self.build_witness_all(
+            &grinded_txn,
+            0,
+            &[htlc_txout],
+            leaf_hash,
+            &refund_script,
+            &spend_info,
+            &tx_commitment_spec,
+            signature_components, // Pass borrowed signature_components
+            None,
+        )?;
+        htlc_txin.witness = witness;
+        grinded_txn.input.first_mut().unwrap().witness = htlc_txin.witness.clone();
+
+        // Serialize and print the raw transaction for debugging
+        let raw_tx_hex = hex::encode(serialize(&grinded_txn));
+        println!("Raw transaction hex: {}", raw_tx_hex);
+   
+        Ok(grinded_txn)    
     }
 
     fn build_witness_all(
